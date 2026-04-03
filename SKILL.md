@@ -10,12 +10,32 @@ You are orchestrating a panel of AI agents. You are the **admin** — all agents
 
 ## Available Tools
 
+**Preferred: Cursor Agent** — one binary, all models, fast (~5-10s):
+
+```bash
+agent -p --trust "prompt" --model MODEL_ID
+```
+
+Key models:
+| Model ID | Provider |
+|----------|----------|
+| `claude-4.6-sonnet-medium` | Anthropic Claude Sonnet 4.6 |
+| `claude-4.6-opus-high` | Anthropic Claude Opus 4.6 |
+| `claude-4.5-sonnet` | Anthropic Claude Sonnet 4.5 |
+| `gemini-3.1-pro` | Google Gemini 3.1 Pro |
+| `gpt-5.3-codex` | OpenAI GPT-5.3 Codex |
+| `gpt-5.3-codex-fast` | OpenAI GPT-5.3 Codex (fast) |
+| `composer-2-fast` | Cursor Composer 2 (default) |
+
+Run `agent models` to see all available models.
+
+**Fallback tools** (if `agent` is unavailable):
+
 | Tool | Command | Notes |
 |------|---------|-------|
-| Gemini | `gemini -p "prompt"` | Do NOT use `-m` flag (causes tool-use timeouts). Default model only. |
-| Claude | `claude -p "prompt" --output-format text` | Use `--model` to select variant: `claude-sonnet-4-6`, `claude-haiku-4-5-20251001` |
-| Codex | `codex exec "prompt"` | Uses stdin redirect (`< file`), not pipe. May be rate-limited. |
-| Cursor Agent | `agent -p --trust "prompt" --model X` | Models: `claude-4.6-sonnet-medium`, `gemini-3.1-pro`, `gpt-5.3-codex`, etc. Requires paid plan. |
+| Gemini | `gemini -p "prompt"` | Do NOT use `-m` flag (causes timeouts). Default model only. |
+| Claude | `claude -p "prompt" --output-format text` | Use `--model` for variants. |
+| Codex | `codex exec "prompt"` | Uses stdin redirect (`< file`), not pipe. |
 
 ## Critical: Performance Rules
 
@@ -24,52 +44,51 @@ You are orchestrating a panel of AI agents. You are the **admin** — all agents
 3. **Always `timeout 45`** wrapper on every invocation.
 4. **Always `2>/dev/null`** to suppress CLI startup noise.
 5. **Always create a Task** per agent before spawning, update to "done" or "timed out" when complete.
-6. **Gemini**: always include "Do NOT use tools or search — analyze only what's given." in the prompt. Without this, Gemini tries web research and times out.
+6. **Context via prompt, not stdin.** Pass the full context directly in the prompt string. Do NOT pipe via stdin — `agent` ignores stdin.
+7. For long context (reports, documents), write to `/tmp/consult-context.md` and include in the prompt: "Read the file /tmp/consult-context.md and analyze it."
 
 ## Agent Naming
 
 Each agent gets a name: `@tool-model-adjective-animal`. Examples:
 
 ```
-@gemini-default-bold-falcon
-@claude-sonnet-calm-otter
-@claude-haiku-swift-heron
-@codex-gpt5-keen-wolf
+@claude-sonnet-bold-falcon
+@gemini-pro-calm-otter
+@gpt5-codex-swift-heron
+@claude-opus-keen-wolf
 ```
 
 The user can address agents by full name or just the animal: "@bold-falcon" or "@calm-otter".
 
 The user specifies which tools. Examples:
 - "ask gemini and claude" → 2 agents
-- "ask gemini, claude sonnet, and claude haiku" → 3 agents
-- "ask 3 claudes with different models" → 3 agents
+- "ask gemini pro, claude sonnet, and gpt-5" → 3 agents
+- "ask all available models" → spawn one per major model
 
 **Present the roster** when starting:
 > Panel assembled:
-> - @gemini-default-bold-falcon (Gemini)
-> - @claude-sonnet-calm-otter (Claude Sonnet 4.6)
+> - @claude-sonnet-bold-falcon (Claude Sonnet 4.6)
+> - @gemini-pro-calm-otter (Gemini 3.1 Pro)
+> - @gpt5-codex-swift-heron (GPT-5.3 Codex)
 
 ## Workflow
 
 ### Step 1: Prepare Context
 
-Write the user's document/question to `/tmp/consult-context.md`. Include the panel roster at the top.
+If the user provides a long document, write it to `/tmp/consult-context.md`. For shorter questions, include directly in the prompt.
 
 ### Step 2: Invoke Agents
 
 Create a Task per agent (activeForm: "@name is thinking"), then spawn all in parallel as background commands:
 
+For short context (fits in prompt):
 ```bash
-cd /tmp && cat consult-context.md | timeout 45 gemini -p "You are @gemini-default-bold-falcon. [question]. Under 150 words. Do NOT use tools or search — analyze only what's given." 2>/dev/null
+cd /tmp && timeout 45 agent -p --trust "You are @claude-sonnet-bold-falcon on a review panel. [question + context]. Be specific, under 150 words." --model claude-4.6-sonnet-medium 2>/dev/null
 ```
 
+For long context (written to file):
 ```bash
-cd /tmp && cat consult-context.md | timeout 45 claude -p "You are @claude-sonnet-calm-otter. [question]. Under 150 words. Do NOT use tools." --output-format text --model claude-sonnet-4-6 2>/dev/null
-```
-
-For Codex (uses stdin redirect, not pipe):
-```bash
-cd /tmp && timeout 45 codex exec "You are @codex-gpt5-keen-wolf. [question]. Under 150 words." < consult-context.md 2>/dev/null
+cd /tmp && timeout 45 agent -p --trust "You are @claude-sonnet-bold-falcon on a review panel. Read /tmp/consult-context.md and analyze it. [question]. Be specific, under 150 words." --model claude-4.6-sonnet-medium 2>/dev/null
 ```
 
 ### Step 3: Collect Responses
@@ -84,7 +103,7 @@ As each background task completes:
 
 If an agent times out (exit code 124):
 1. Mark the Task as timed out
-2. Auto-retry ONCE with a shorter, more direct prompt: "Answer in 2-3 sentences. Do NOT use any tools."
+2. Auto-retry ONCE with a shorter prompt: "Answer in 2-3 sentences."
 3. If retry also fails, report it and move on
 
 ### Step 5: Follow-ups / Challenges
@@ -118,18 +137,18 @@ After the consultation, save the full history to `/tmp/consult-history-{topic-sl
 # Consultation: {topic}
 
 ## Panel
-- @gemini-default-bold-falcon (Gemini)
-- @claude-sonnet-calm-otter (Claude Sonnet 4.6)
+- @claude-sonnet-bold-falcon (Claude Sonnet 4.6)
+- @gemini-pro-calm-otter (Gemini 3.1 Pro)
 
 ## Document
 {original content}
 
 ## Round 1: Initial Opinions
 
-### @gemini-default-bold-falcon
+### @claude-sonnet-bold-falcon
 {response}
 
-### @claude-sonnet-calm-otter
+### @gemini-pro-calm-otter
 {response}
 
 ### Admin Synthesis
@@ -138,7 +157,7 @@ After the consultation, save the full history to `/tmp/consult-history-{topic-sl
 ## Round 2: Challenge to @bold-falcon
 Q: {user's challenge}
 
-### @gemini-default-bold-falcon
+### @claude-sonnet-bold-falcon
 {response}
 
 ## Current Question
@@ -160,8 +179,9 @@ Q: {user's challenge}
 
 ## Known Limitations
 
-- **Gemini model selection**: The `-m` flag causes Gemini to attempt tool use and timeout. Use default model only until this is resolved.
-- **Parallel Claude instances**: Two `claude -p` calls with the same model may conflict. Use different models (sonnet + haiku) for parallel Claude agents.
+- **Parallel Claude via `agent`**: Multiple `agent` calls with different models run fine in parallel.
+- **Fallback CLIs**: If `agent` is not available, use `claude -p`, `gemini -p`, `codex exec` directly. Gemini's `-m` flag causes timeouts — use default model only.
+- **Stdin**: `agent` ignores piped stdin. Pass context in the prompt or reference a file path.
 - **Codex credits**: Codex may be rate-limited or out of credits. Handle gracefully.
 
 ## Topic

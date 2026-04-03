@@ -61,12 +61,14 @@ cp SKILL.md ~/.claude/skills/consult/
 
 Claude Code plus at least one other CLI tool:
 
-| Tool | Install |
-|------|---------|
-| [Claude Code](https://claude.ai/claude-code) | `npm install -g @anthropic-ai/claude-code` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @anthropic-ai/gemini-cli` |
-| [Codex CLI](https://github.com/openai/codex) | `npm install -g @openai/codex` |
-| [Cursor Agent](https://docs.cursor.com/agent-cli) | Included with Cursor (paid plan for model selection) |
+| Tool | Install | Notes |
+|------|---------|-------|
+| [Cursor Agent](https://docs.cursor.com/agent-cli) | Included with Cursor | **Recommended** — one binary, all models (Claude, Gemini, GPT). Requires Pro plan. |
+| [Claude Code](https://claude.ai/claude-code) | `npm install -g @anthropic-ai/claude-code` | Fallback for Anthropic models |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @anthropic-ai/gemini-cli` | Fallback for Google models |
+| [Codex CLI](https://github.com/openai/codex) | `npm install -g @openai/codex` | Fallback for OpenAI models |
+
+**Best setup:** Cursor Agent (`agent` CLI) with a Pro plan gives access to Claude, Gemini, and GPT models through a single tool with ~5-10s response times.
 
 ## Usage
 
@@ -102,9 +104,10 @@ You can specify which tools:
 
 ## Performance tips
 
-- Agents respond in ~10-15 seconds when run from `/tmp` (the skill does this automatically)
-- Gemini needs "Do NOT use tools or search" in prompts to avoid web research timeouts
-- Two Claude instances with the same model may conflict — use different variants (sonnet + haiku)
+- Agents respond in ~5-10 seconds via Cursor Agent, ~10-15s via native CLIs
+- The skill runs all tools from `/tmp` to skip project directory scanning
+- With Cursor Agent, all models run in parallel with no conflicts
+- With native CLIs: Gemini needs "Do NOT use tools or search" to avoid timeouts, and two Claude instances with the same model may conflict
 
 ## Uninstall
 
