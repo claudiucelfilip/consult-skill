@@ -61,14 +61,14 @@ cp SKILL.md ~/.claude/skills/consult/
 
 Claude Code plus at least one other CLI tool:
 
-| Tool | Install | Notes |
-|------|---------|-------|
-| [Cursor Agent](https://docs.cursor.com/agent-cli) | Included with Cursor | **Recommended** — one binary, all models (Claude, Gemini, GPT). Requires Pro plan. |
-| [Claude Code](https://claude.ai/claude-code) | `npm install -g @anthropic-ai/claude-code` | Fallback for Anthropic models |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @anthropic-ai/gemini-cli` | Fallback for Google models |
-| [Codex CLI](https://github.com/openai/codex) | `npm install -g @openai/codex` | Fallback for OpenAI models |
+| Tool | Install | Models |
+|------|---------|--------|
+| [Claude Code](https://claude.ai/claude-code) | `npm install -g @anthropic-ai/claude-code` | Anthropic (Sonnet, Opus, Haiku) |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @anthropic-ai/gemini-cli` | Google (Gemini Pro, Flash) |
+| [Codex CLI](https://github.com/openai/codex) | `npm install -g @openai/codex` | OpenAI (GPT-5.x) |
+| [Cursor Agent](https://docs.cursor.com/agent-cli) | Included with Cursor | All of the above via one binary (requires Pro plan) |
 
-**Best setup:** Cursor Agent (`agent` CLI) with a Pro plan gives access to Claude, Gemini, and GPT models through a single tool with ~5-10s response times.
+You need Claude Code (the orchestrator) plus at least one other tool for the panel.
 
 ## Usage
 

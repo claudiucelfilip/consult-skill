@@ -10,32 +10,17 @@ You are orchestrating a panel of AI agents. You are the **admin** — all agents
 
 ## Available Tools
 
-**Preferred: Cursor Agent** — one binary, all models, fast (~5-10s):
+Use whichever CLI tools are installed. Check with `which agent claude gemini codex`.
 
-```bash
-agent -p --trust "prompt" --model MODEL_ID
-```
+| Tool | Command | Context via | Notes |
+|------|---------|-------------|-------|
+| Cursor Agent | `agent -p --trust "prompt" --model MODEL_ID` | Prompt or file path | All providers via one binary. Run `agent models` for full list. Requires Cursor Pro. |
+| Claude | `claude -p "prompt" --output-format text` | stdin pipe | Use `--model` for variants (e.g. `claude-sonnet-4-6`). |
+| Gemini | `gemini -p "prompt"` | stdin pipe | Do NOT use `-m` flag (causes timeouts). Default model only. |
+| Codex | `codex exec "prompt"` | stdin redirect (`< file`) | May be rate-limited. |
 
-Key models:
-| Model ID | Provider |
-|----------|----------|
-| `claude-4.6-sonnet-medium` | Anthropic Claude Sonnet 4.6 |
-| `claude-4.6-opus-high` | Anthropic Claude Opus 4.6 |
-| `claude-4.5-sonnet` | Anthropic Claude Sonnet 4.5 |
-| `gemini-3.1-pro` | Google Gemini 3.1 Pro |
-| `gpt-5.3-codex` | OpenAI GPT-5.3 Codex |
-| `gpt-5.3-codex-fast` | OpenAI GPT-5.3 Codex (fast) |
-| `composer-2-fast` | Cursor Composer 2 (default) |
-
-Run `agent models` to see all available models.
-
-**Fallback tools** (if `agent` is unavailable):
-
-| Tool | Command | Notes |
-|------|---------|-------|
-| Gemini | `gemini -p "prompt"` | Do NOT use `-m` flag (causes timeouts). Default model only. |
-| Claude | `claude -p "prompt" --output-format text` | Use `--model` for variants. |
-| Codex | `codex exec "prompt"` | Uses stdin redirect (`< file`), not pipe. |
+**Cursor Agent model IDs** (when available):
+`claude-4.6-sonnet-medium`, `claude-4.6-opus-high`, `gemini-3.1-pro`, `gpt-5.3-codex`, `gpt-5.3-codex-fast`, `composer-2-fast`
 
 ## Critical: Performance Rules
 
