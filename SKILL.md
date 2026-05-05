@@ -26,27 +26,34 @@ At panel assembly, run the discovery steps below. If `agent` is unavailable, fal
 
 ### Startup Discovery (run once per consultation)
 
-1. **Detect installed tools:**
+Run **one** combined detection block. It resolves binary paths (not just availability), checks for `timeout`/`gtimeout`, and prints a clean summary. Avoid `cmd && echo ok || echo missing` — that pattern can trip on shell-init hooks and produce `(eval):1: == not found` noise.
+
 ```bash
-command -v agent && echo "agent:ok" || echo "agent:missing"
-command -v claude && echo "claude:ok" || echo "claude:missing"
-command -v gemini && echo "gemini:ok" || echo "gemini:missing"
-command -v codex && echo "codex:ok" || echo "codex:missing"
+for t in agent claude gemini codex timeout gtimeout; do
+  p=$(command -v "$t" 2>/dev/null)
+  if [ -n "$p" ]; then echo "$t:$p"; else echo "$t:missing"; fi
+done
 ```
 
-2. **If `agent` is available, list models:**
+**Capture the values from the output:**
+- `AGENT_BIN` = the path printed for `agent` (e.g., `/Users/you/.local/bin/agent`). If `missing`, fall back to `claude`/`gemini`/`codex` paths instead.
+- `TIMEOUT_PREFIX` = `"<path-to-timeout> 45"` if `timeout` exists, else `"<path-to-gtimeout> 45"` if `gtimeout` exists, else **empty string** (no wrapper). Never hardcode `timeout 45` — on macOS without coreutils it doesn't exist and every background invocation exits with code 127.
+
+**If `agent` is available, list models:**
 ```bash
-agent models 2>/dev/null
+"$AGENT_BIN" models 2>/dev/null
 ```
 Pick one model per provider the user requested (e.g., one GPT, one Gemini, one Grok). Prefer non-`-fast` variants unless the user asks for speed. If a requested provider has no models, tell the user.
 
-3. **If `agent` is unavailable**, use native CLIs for whichever tools are installed. Use their default models (do not guess model IDs).
+**If `agent` is unavailable**, use native CLIs for whichever tools are installed. Use their default models (do not guess model IDs).
+
+**Fallback when no timeout binary exists:** dispatch without a wrapper and rely on the harness's own command timeout (typically 2 minutes). Surface this in the roster announcement: "(no `timeout` binary; relying on harness 2-minute cap)".
 
 ## Critical: Performance Rules
 
 1. **Run everything from the working directory.** All agents run from the admin's current directory. This keeps context files, repo access, and agent invocations in one place.
 2. **Always `run_in_background: true`** on every Bash invocation. Never block the conversation.
-3. **Always `timeout 45`** wrapper on every invocation.
+3. **Use the discovered `$AGENT_BIN` and `$TIMEOUT_PREFIX`** (see Startup Discovery) — do not hardcode `agent` or `timeout 45`. macOS doesn't ship `timeout`; bare `agent` may not be on the harness PATH. Hardcoding either causes silent exit-127 failures.
 4. **Always `2>/dev/null`** to suppress CLI startup noise.
 5. **Always create a Task** per agent before spawning, update to "done" or "timed out" when complete.
 6. Write context to `consult-{topic-slug}.md` in the working directory (see **Topic Slug Rules** below). Include in the prompt: "Read the file {absolute-path}/consult-{topic-slug}.md and analyze it." These files persist as artifacts for future sessions to reference.
@@ -100,19 +107,29 @@ The user specifies which tools. Examples:
 
 ### Step 2: Invoke Agents
 
-Create a Task per agent (activeForm: "@name is thinking"), then spawn all in parallel as background commands:
+Create a Task per agent (activeForm: "@name is thinking"), then spawn all in parallel as background commands. Use the **discovered binary path** for `agent` and the **discovered timeout prefix** (which may be empty).
 
-For short context (fits in prompt):
-```bash
-timeout 45 agent -p --trust "You are @claude-sonnet-bold-falcon on a review panel. [question + context]. Be specific, under 150 words." --model MODEL_ID 2>/dev/null
+Pseudo-template:
+```
+[$TIMEOUT_PREFIX] $AGENT_BIN -p --trust "<prompt>" --model <MODEL_ID> 2>/dev/null
 ```
 
-For long context (written to file):
+Concrete example (short context, fits in prompt):
 ```bash
-timeout 45 agent -p --trust "You are @claude-sonnet-bold-falcon on a review panel. Read $(pwd)/consult-topic-slug.md and analyze it. [question]. Be specific, under 150 words." --model MODEL_ID 2>/dev/null
+/Users/you/.local/bin/agent -p --trust "You are @claude-sonnet-bold-falcon on a review panel. [question + context]. Be specific, under 150 words." --model claude-sonnet-4-6 2>/dev/null
 ```
 
-Replace `MODEL_ID` with the result from dynamic model discovery.
+Concrete example with timeout available:
+```bash
+/usr/bin/timeout 45 /Users/you/.local/bin/agent -p --trust "..." --model gemini-3.1-pro 2>/dev/null
+```
+
+For long context, reference the file by absolute path inside the prompt:
+```bash
+$AGENT_BIN -p --trust "You are @grok-bold-falcon on a review panel. Read /absolute/path/to/consult-topic-slug.md and analyze it. [question]. Be specific, under 150 words." --model grok-4-20 2>/dev/null
+```
+
+Replace `MODEL_ID` with the result from dynamic model discovery. Substitute `$AGENT_BIN` with the actual path captured at startup.
 
 ### Step 3: Collect Responses
 
@@ -128,6 +145,7 @@ As each background task completes:
 
 For any non-zero exit code:
 - **Exit 124 (timeout):** Mark Task as timed out. Auto-retry ONCE with a shorter prompt: "Answer in 2-3 sentences." If retry also fails, report and move on.
+- **Exit 127 (command not found):** Almost always means `timeout` or the agent binary wasn't on PATH in the background runner. Re-run startup discovery, fix `$AGENT_BIN`/`$TIMEOUT_PREFIX`, and retry once with the corrected absolute paths. Do NOT keep retrying with the same broken command.
 - **Exit 1 (general error):** Read the output for clues (auth failure, rate limit, missing binary). Report the error to the user with the agent's @name. Do NOT auto-retry — these usually need user action.
 - **Empty output:** Mark as failed. Report "@name returned no output" and move on.
 
@@ -213,6 +231,9 @@ Q: {user's challenge}
 
 ## Known Limitations
 
+- **macOS lacks `timeout`**: Stock macOS does not include GNU `coreutils`, so `timeout` is missing. `gtimeout` is available only if Homebrew coreutils is installed. The startup discovery sets `$TIMEOUT_PREFIX` to empty when neither exists, and the harness's own command timeout (typically ~2 minutes) becomes the upper bound. Never hardcode `timeout 45` — every invocation will exit 127.
+- **`agent` PATH in background runners**: The harness's background-task runner may use a stripped PATH that doesn't include `~/.local/bin` even when interactive shells do. Always invoke `agent` via the absolute path captured at startup (`$AGENT_BIN`).
+- **`command -v X && echo ok || echo missing`**: This pattern can interact badly with shell-init hooks (e.g., zsh global aliases) and produce `(eval):1: == not found` noise mixed into your output. Use a `for` loop with an `if`/`else` instead.
 - **Parallel Claude via `agent`**: Multiple `agent` calls with different models run fine in parallel.
 - **Fallback CLIs**: If `agent` is not available, use `claude -p`, `gemini -p`, `codex exec` directly. Gemini's `-m` flag causes timeouts — use default model only.
 - **Stdin**: `agent` ignores piped stdin. Pass context in the prompt or reference a file path.
