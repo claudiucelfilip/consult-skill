@@ -37,7 +37,7 @@ done
 
 **Capture the values from the output:**
 - `AGENT_BIN` = the path printed for `agent` (e.g., `/Users/you/.local/bin/agent`). If `missing`, fall back to `claude`/`gemini`/`codex` paths instead.
-- `TIMEOUT_PREFIX` = `"<path-to-timeout> 45"` if `timeout` exists, else `"<path-to-gtimeout> 45"` if `gtimeout` exists, else **empty string** (no wrapper). Never hardcode `timeout 45` — on macOS without coreutils it doesn't exist and every background invocation exits with code 127.
+- `TIMEOUT_PREFIX` = `"<path-to-timeout> 45"` if `timeout` exists, else `"<path-to-gtimeout> 45"` if `gtimeout` exists, else **empty string** (no wrapper). Never hardcode `timeout 45` — it's missing on stock macOS (no coreutils) and on minimal Linux images (Alpine, BusyBox, slim containers). Hardcoding causes every background invocation to exit with code 127.
 
 **If `agent` is available, list models:**
 ```bash
@@ -53,7 +53,7 @@ Pick one model per provider the user requested (e.g., one GPT, one Gemini, one G
 
 1. **Run everything from the working directory.** All agents run from the admin's current directory. This keeps context files, repo access, and agent invocations in one place.
 2. **Always `run_in_background: true`** on every Bash invocation. Never block the conversation.
-3. **Use the discovered `$AGENT_BIN` and `$TIMEOUT_PREFIX`** (see Startup Discovery) — do not hardcode `agent` or `timeout 45`. macOS doesn't ship `timeout`; bare `agent` may not be on the harness PATH. Hardcoding either causes silent exit-127 failures.
+3. **Use the discovered `$AGENT_BIN` and `$TIMEOUT_PREFIX`** (see Startup Discovery) — do not hardcode `agent` or `timeout 45`. `timeout` may be missing (stock macOS, Alpine, slim containers) and bare `agent` may not be on the harness's PATH (background runners often have a stripped PATH). Hardcoding either causes silent exit-127 failures.
 4. **Always `2>/dev/null`** to suppress CLI startup noise.
 5. **Always create a Task** per agent before spawning, update to "done" or "timed out" when complete.
 6. Write context to `consult-{topic-slug}.md` in the working directory (see **Topic Slug Rules** below). Include in the prompt: "Read the file {absolute-path}/consult-{topic-slug}.md and analyze it." These files persist as artifacts for future sessions to reference.
@@ -231,8 +231,8 @@ Q: {user's challenge}
 
 ## Known Limitations
 
-- **macOS lacks `timeout`**: Stock macOS does not include GNU `coreutils`, so `timeout` is missing. `gtimeout` is available only if Homebrew coreutils is installed. The startup discovery sets `$TIMEOUT_PREFIX` to empty when neither exists, and the harness's own command timeout (typically ~2 minutes) becomes the upper bound. Never hardcode `timeout 45` — every invocation will exit 127.
-- **`agent` PATH in background runners**: The harness's background-task runner may use a stripped PATH that doesn't include `~/.local/bin` even when interactive shells do. Always invoke `agent` via the absolute path captured at startup (`$AGENT_BIN`).
+- **`timeout` is not universally available**: Stock macOS lacks GNU coreutils (no `timeout`); `gtimeout` is only present if Homebrew coreutils is installed. Some minimal Linux images (Alpine, BusyBox-based, slim containers) also ship without `timeout` or with a BusyBox variant that doesn't accept the same flags. Startup discovery sets `$TIMEOUT_PREFIX` to empty when neither exists, and the harness's own command timeout (typically ~2 minutes) becomes the upper bound. Never hardcode `timeout 45` — invocations will exit 127.
+- **`agent` PATH in background runners**: The harness's background-task runner often uses a stripped PATH that excludes `~/.local/bin` (and similar user-bin paths) even when interactive shells include them. This applies on both macOS and Linux. Always invoke `agent` via the absolute path captured at startup (`$AGENT_BIN`).
 - **`command -v X && echo ok || echo missing`**: This pattern can interact badly with shell-init hooks (e.g., zsh global aliases) and produce `(eval):1: == not found` noise mixed into your output. Use a `for` loop with an `if`/`else` instead.
 - **Parallel Claude via `agent`**: Multiple `agent` calls with different models run fine in parallel.
 - **Fallback CLIs**: If `agent` is not available, use `claude -p`, `gemini -p`, `codex exec` directly. Gemini's `-m` flag causes timeouts — use default model only.
